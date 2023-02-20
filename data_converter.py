@@ -7,7 +7,7 @@ from nuscenes.utils.data_io import load_bin_file
 from nuscenes.utils.geometry_utils import points_in_box
 import os.path as osp
 from functools import partial
-from utils.points_processoint import *
+from utils.points_process import *
 from sklearn.neighbors import KDTree
 import open3d as o3d
 import argparse
@@ -34,6 +34,19 @@ def parse_args():
         default=10,
         required=False,
         help='specify sweeps of lidar per example')
+    parser.add_argument(
+        '--start',
+        type=int,
+        default=0,
+        required=False,
+        help='specify start position of scene for each process')
+    parser.add_argument(
+        '--end',
+        type=int,
+        default=1000,
+        required=False,
+        help='specify end position of scene for each process')
+
     args = parser.parse_args()
     return args
 
@@ -437,17 +450,25 @@ def generate_occupancy_data(nusc: NuScenes, cur_sample, num_sweeps, save_path='.
     return pc.points, lidar_seg
 
 def convert2occupy(dataroot = '../nuscenes3/',
-                        save_path='./occupancy/', num_sweeps=10,):
+                        save_path='./occupancy/', num_sweeps=10, start=0, end=200):
     if not os.path.exists(save_path):
         os.mkdir(save_path)
-    cnt = 0
+
     nusc = NuScenes(version='v1.0-trainval', dataroot=dataroot, verbose=True)
-    for scene in nusc.scene:
+    for i, scene in enumerate(nusc.scene):
+        if i < start:
+            continue
+        elif i >= end:
+            break
+        print("scene {}".format(i))
+        # import pdb
+        # pdb.set_trace()
         INTER_STATIC_POINTS.clear()
         INTER_STATIC_LABEL.clear()
         INTER_STATIC_POSE.clear()
         sample_token = scene['first_sample_token']
         cur_sample = nusc.get('sample', sample_token)
+        cnt = 0
         while True:
             generate_occupancy_data(nusc, cur_sample, num_sweeps, save_path=save_path)
             cnt += 1
@@ -455,8 +476,9 @@ def convert2occupy(dataroot = '../nuscenes3/',
             if cur_sample['next'] == '':
                 break
             cur_sample = nusc.get('sample', cur_sample['next'])
+        print("scene {}: {} samples finished.".format(i, cnt))
 
 if __name__ == "__main__":
     args = parse_args()
-    convert2occupy(args.dataroot, args.save_path, args.num_sweeps)
+    convert2occupy(args.dataroot, args.save_path, args.num_sweeps, start=args.start, end=args.end)
 
