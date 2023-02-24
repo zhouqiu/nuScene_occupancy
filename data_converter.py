@@ -102,7 +102,9 @@ def get_frame_info(frame, nusc: NuScenes, gt_from='lidarseg'):
                              sd_rec['calibrated_sensor_token'])
     pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
     velocities = np.array(
-                [nusc.box_velocity(token)[:2] for token in frame['anns']])
+                [nusc.box_velocity(token)[:2] for token in frame['anns']]) #(n, 2)
+    if velocities.shape[0] == 0: #for 'anns' is null
+        velocities = velocities.reshape(-1, 2)
     velocities = np.concatenate((velocities, np.zeros_like(velocities[:, 0:1])), axis=-1)
     velocities = velocities.transpose(1, 0)
     instance_tokens = [nusc.get('sample_annotation', token)['instance_token'] for token in frame['anns']]
@@ -145,13 +147,15 @@ def intermediate_keyframe_align(nusc: NuScenes, prev_frame_info, ego_frame_info,
             pc_segs (np.array) label of aligned points of prev_frame
     '''
     prev_frame_info['pc'].points = remove_close(prev_frame_info['pc'].points, (1, 2))
-    pcs, labels, masks = multi_apply(align_dynamic_thing, prev_frame_info['boxes'], prev_frame_info['instance_tokens'], nusc=nusc, prev_points=prev_frame_info['pc'].points, ego_frame_info=ego_frame_info)
-    masks = np.stack(masks, axis=-1)
-    masks = masks.sum(axis=-1)
-    masks = ~(masks>0)
-    prev_frame_info['pc'].points = prev_frame_info['pc'].points[:, masks]
-
-    
+    if prev_frame_info['boxes'] and prev_frame_info['instance_tokens']:
+        pcs, labels, masks = multi_apply(align_dynamic_thing, prev_frame_info['boxes'], prev_frame_info['instance_tokens'], nusc=nusc, prev_points=prev_frame_info['pc'].points, ego_frame_info=ego_frame_info)
+        masks = np.stack(masks, axis=-1)
+        masks = masks.sum(axis=-1)
+        masks = ~(masks>0)
+        prev_frame_info['pc'].points = prev_frame_info['pc'].points[:, masks]
+    else:
+        pcs = []
+        labels = []
     if  prev_frame_info['lidar_token'] in INTER_STATIC_POINTS:
         static_points = INTER_STATIC_POINTS[prev_frame_info['lidar_token']].copy()
         static_points = prev2ego(static_points, INTER_STATIC_POSE[prev_frame_info['lidar_token']], ego_frame_info)
